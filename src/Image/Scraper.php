@@ -35,8 +35,6 @@ class Scraper implements ContainerAwareInterface
 
     /**
      * Scraper constructor.
-     *
-     * @param ImageFactory $imageFactory
      */
     public function __construct(ImageFactory $imageFactory)
     {
@@ -44,14 +42,9 @@ class Scraper implements ContainerAwareInterface
     }
 
     /**
-     * @param ScrapingInformation               $info
-     * @param string                            $destinationDirectory
-     * @param GraphApiReader                    $reader
      * @param GuzzleException|\Exception|string $error
      *
      * @throws RequestQuotaExceededException
-     *
-     * @return FilesModel|null
      */
     public function scrape(
         ScrapingInformation $info,
@@ -115,12 +108,7 @@ class Scraper implements ContainerAwareInterface
     }
 
     /**
-     * @param ScrapingInformation $info
-     * @param GraphApiReader      $reader
-     *
      * @throws RequestQuotaExceededException
-     *
-     * @return string|null
      */
     private function getSourceUri(ScrapingInformation $info, GraphApiReader $reader): ?string
     {
@@ -139,11 +127,28 @@ class Scraper implements ContainerAwareInterface
         }
 
         if (ScrapingInformation::TYPE_IMAGE_SET === $info->type) {
-            $object = $reader->getSingleNode($info->objectId, ['images']);
-            if (null === $object) {
-                return $info->fallbackUrl;
+            if ($info->objectId === $info->identifier) {
+                $object = $reader->getSingleNode($info->identifier, ['images']);
+
+                if (null === $object) {
+                    return $info->fallbackUrl;
+                }
+
+                $imageSet = $object->getField('images', null);
+            } else {
+                $object = $reader->getSingleNode($info->identifier, ['attachments{subattachments}']);
+                if (null === $object) {
+                    return $info->fallbackUrl;
+                }
+
+                $attachments = $object->getField('attachments', null);
+                if (null === $attachments) {
+                    return $info->fallbackUrl;
+                }
+
+                $imageSet = $attachments->asArray()[0]['subattachments'][0]['media'] ?? null;
             }
-            $imageSet = $object->getField('images', null);
+
             if (null === $imageSet) {
                 return $info->fallbackUrl;
             }
@@ -154,11 +159,6 @@ class Scraper implements ContainerAwareInterface
         throw new \InvalidArgumentException('Illegal scraping information provided.');
     }
 
-    /**
-     * @param iterable $imageSet
-     *
-     * @return string|null
-     */
     private function getBiggestPossibleImageSource(iterable $imageSet): ?string
     {
         $widthLimit = Config::get('gdMaxImgWidth');
@@ -183,11 +183,7 @@ class Scraper implements ContainerAwareInterface
     /**
      * Download a file.
      *
-     * @param string                $sourceUri
-     * @param string                $destinationPath
      * @param GuzzleException| null $error
-     *
-     * @return bool
      */
     private function downloadFile(string $sourceUri, string $destinationPath, GuzzleException &$error = null): bool
     {
@@ -222,8 +218,6 @@ class Scraper implements ContainerAwareInterface
 
     /**
      * Make sure a file does not exist at the given path.
-     *
-     * @param string $fullPath
      */
     private function deleteFileIfExisting(string $fullPath): void
     {
